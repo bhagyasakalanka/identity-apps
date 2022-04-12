@@ -116,6 +116,8 @@ export class Config {
             token: `${this.getDeploymentConfig().serverHost}/oauth2/token`,
             totp: `${this.getDeploymentConfig().serverHost}/api/users/v1/me/totp`,
             totpSecret: `${this.getDeploymentConfig().serverHost}/api/users/v1/me/totp/secret`,
+            backupCode: `${this.getDeploymentConfig().serverHost}/api/users/v1/me/backup-code`,
+            backupCodeDisable: `${this.getDeploymentConfig().serverHost}/api/users/v1/me/backup-code/disable`,
             typingDNAMe: `${this.getDeploymentConfig().serverHost}/api/identity/typingdna/v1.0/me/typingpatterns`,
             typingDNAServer: `${
                 this.getDeploymentConfig().serverHost
@@ -136,6 +138,7 @@ export class Config {
             appName: window["AppUtils"].getConfig().ui.appName,
             appTitle: window["AppUtils"].getConfig().ui.appTitle,
             authenticatorApp: window["AppUtils"].getConfig().ui.authenticatorApp,
+            backupCodeApp: window["AppUtils"].getConfig().ui.backupCodeApp,
             copyrightText: window["AppUtils"]
                 .getConfig()
                 .ui.appCopyright.replace("${copyright}", "\u00A9")

@@ -580,7 +580,11 @@ export const SignOnMethods: FunctionComponent<SignOnMethodsPropsInterface> = (
                     <Divider hidden/>
                     <div className="authenticator-grid">
                         {
-                            authenticators.map((authenticator, index) => (
+                            authenticators.forEach(auth=>{console.log("authe name"+auth.name)})
+                        }
+                        {
+                            authenticators.filter(authenticator => authenticator.name !== "backup-code-authenticator")
+                            .map((authenticator, index) => (
                                 <LabeledCard
                                     key={ index }
                                     multilineLabel

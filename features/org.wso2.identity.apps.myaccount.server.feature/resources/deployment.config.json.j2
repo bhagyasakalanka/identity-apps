@@ -274,7 +274,10 @@
                         "update": [],
                         "delete": []
                     {% endif %}
-                }
+                },
+                "enableMFAUserWise": {{ myaccount.security.enableMFAUserWise }},
+                "dibableMFAForFederatedUsers": {{ myaccount.security.dibableMFAForFederatedUsers }},
+                "isBackupCodeForced": {{ myaccount.security.isBackupCodeForced }}
             }
         },
         {% if myaccount.ui.is_cookie_consent_banner_enabled is defined %}

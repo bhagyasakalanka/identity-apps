@@ -17,11 +17,11 @@
  */
 
 import { TestableComponentInterface } from "@wso2is/core/models";
-import { GenericIcon } from "@wso2is/react-components";
+import { GenericIcon, Section, EmphasizedSegment , Text} from "@wso2is/react-components";
 import QRCode from "qrcode.react";
 import React, { PropsWithChildren, useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import {
     Button,
     Container,
@@ -30,21 +30,34 @@ import {
     Grid,
     Icon,
     List,
+    Header,
+    IconGroup,
     Message,
     Modal, 
     Popup,
-    Segment  } from "semantic-ui-react";
+    Segment,  
+    ListContent,
+    Checkbox,Placeholder } from "semantic-ui-react";
+
+
+import { SettingsSection } from "../../shared";
 import {
-    checkIfTOTPEnabled,
+    isMFAAuthenticatorEnabled,
     deleteTOTP,
     initTOTPCode,
     refreshTOTPCode,
-    validateTOTPCode
+    validateTOTPCode,
+    disableBackupAuthenticator,
+    getEnabledAuthenticators,
+    updateEnabledAuthenticators
 } from "../../../api";
 import { getMFAIcons } from "../../../configs";
 import { SCIMConfigs } from "../../../extensions/configs/scim";
 import { AlertInterface, AlertLevels, AuthStateInterface } from "../../../models";
 import { AppState } from "../../../store";
+import {RenderBackupCodeWizard} from "./backup-code-display"
+import { getProfileInformation, setActiveForm } from "../../../store/actions";
+// import {refreshBackCodes} from "./backup-code-function"
 
 /**
  * Property types for the TOTP component.
@@ -52,6 +65,10 @@ import { AppState } from "../../../store";
  */
 interface TOTPProps extends TestableComponentInterface {
     onAlertFired: (alert: AlertInterface) => void;
+    isBackupCodeForced: boolean;
+    onBackupCodeAvailabilityToggle
+    isSuperTenantLogin: boolean
+
 }
 
 /**
@@ -66,16 +83,28 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
 
     const {
         onAlertFired,
+
+        isBackupCodeForced,
+        onBackupCodeAvailabilityToggle,
+        isSuperTenantLogin,
+        
         [ "data-testid" ]: testId
     } = props;
 
+    const enableMFAUserWise: boolean = useSelector((state: AppState) => state?.config?.ui?.features["security"].enableMFAUserWise);
+     
+    const dispatch = useDispatch();
     const [ openWizard, setOpenWizard ] = useState(false);
     const [ qrCode, setQrCode ] = useState("");
     const [ step, setStep ] = useState(0);
     const [ error, setError ] = useState(false);
     const [ isTOTPConfigured, setIsTOTPConfigured ] = useState<boolean>(false);
     const [ revokeTOTPAuthnModalVisibility, setRevokeTOTPAuthnModalVisibility ] = useState(false);
-
+    const [isInitFlow, setIsInitFlow] = useState(false)
+    const [ totpToggle, setTotpToggle ] = useState<boolean>(false);
+    const [showBackupCodeWizard, setShowBackupCodeWizard] = useState<boolean>(false);
+    const tenantDomain = useSelector((state: AppState) => state.authenticationInformation.profileInfo.tenantDomain);
+     
     const { t } = useTranslation();
 
     const totpConfig = useSelector((state: AppState) => state?.config?.ui?.authenticatorApp);
@@ -99,6 +128,10 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
         }
     }, [ openWizard ]);
 
+    useEffect(()=>{
+        setUpToggleTOTPState()
+    },[])
+
     /**
      * Makes an API call to verify the code entered by the user
      * @param code The code entered by the user
@@ -118,7 +151,7 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
     };
 
     useEffect(() => {
-        checkIfTOTPEnabled().then((response) => {
+        isMFAAuthenticatorEnabled("totpEnabled").then((response) => {
             setIsTOTPConfigured(response);
         });
     }, [ ]);
@@ -136,6 +169,53 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
         pinCode1.current.focus();
     };
 
+
+    const enableAuthenticator = () => {
+ 
+        getEnabledAuthenticators()
+                .then((response) => {
+                    console.log("my response2", response);
+                    const authenticators = response;
+                    console.log("my authenticators2", authenticators);
+                    let authenticatorList;
+                    if (authenticators !== undefined) {
+                        authenticatorList = authenticators.split(",");
+                    } else {
+                        authenticatorList = [];
+                    }
+                    
+                    if (
+                        !authenticatorList.includes("TOTP")
+                    ) {
+                        authenticatorList.push("TOTP");
+                    }
+                    if (isBackupCodeForced) {
+                        if (!authenticatorList.includes("Backup OTP Authenticator")) {
+                            authenticatorList.push("Backup OTP Authenticator")
+                        }
+                    }
+                    const newEnabledAuthenticators = authenticatorList.join(
+                        ","
+                    );
+                    updateEnabledAuthenticators(newEnabledAuthenticators)
+                        .then((response) => {
+                            console.log(
+                                "updated successfully authenticatores2",
+                                response
+                            );
+                            setTotpToggle(true);
+                            if (isBackupCodeForced) {
+                                onBackupCodeAvailabilityToggle(true)
+                            }
+                        })
+                        .catch((error) => {
+                            console.log("failed update authenticators2", error);
+                        });
+                })
+                .catch((errorMessage) => {
+                    console.log("my error", errorMessage);
+                });
+            }
     /**
      * Initiates the TOTP flow by getting QR code URL
      */
@@ -145,6 +225,7 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
             const qrCodeUrl = window.atob(response.data.qrCodeUrl);
             setQrCode(qrCodeUrl);
             setOpenWizard(true);
+            enableAuthenticator()
         }).catch((errorMessage) => {
             onAlertFired({
                 description: t(translateKey + "notifications.initError.error.description", {
@@ -156,12 +237,166 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
         });
     };
 
+    const disableTOTPAuthentication = () => {
+ 
+        getEnabledAuthenticators()
+                .then((response) => {
+                    const authenticators = response;
+                    let authenticatorList;
+                    if (authenticators !== undefined) {
+                        authenticatorList = authenticators.split(",");
+                    } else {
+                        authenticatorList = [];
+                    }
+                   
+                    if (
+                        authenticatorList.includes("TOTP")
+                    ) {
+                        authenticatorList.splice(
+                            authenticatorList.indexOf(
+                                "TOTP"
+                            ),
+                            1
+                        );
+        
+                    }
+                    const newEnabledAuthenticators = authenticatorList.join(
+                        ","
+                    );
+                    updateEnabledAuthenticators(newEnabledAuthenticators)
+                        .then((response) => {
+                            console.log(
+                                "updated successfully authenticatores",
+                                response
+                            );
+                            // setTotpToggle(false);
+                            if (isBackupCodeForced) {
+                                onBackupCodeAvailabilityToggle(false)
+                            }
+                        })
+                        .catch((error) => {
+                            console.log("failed update authenticators", error);
+                        });
+                })
+                .catch((errorMessage) => {
+                    console.log("my error", errorMessage);
+                });
+    }
+
+    const setUpToggleTOTPState = (): void => {
+        dispatch(getProfileInformation(true));
+        getEnabledAuthenticators().then((response) => {
+            
+            const authenticators = response
+            let authenticatorList;
+                if (authenticators !== undefined) {
+                    authenticatorList = authenticators.split(",");
+                } else {
+                    authenticatorList = []
+                }
+            if (authenticatorList.includes("TOTP")) {
+                setTotpToggle(true)
+                
+            } else {
+                setTotpToggle(false)
+            }
+            
+            
+            
+        }).catch((errorMessage) => {
+            console.log("my error", errorMessage)
+        })
+    }
+    
+    const toggleTOTP = (): void => {
+        console.log("toggled TOTP");
+        dispatch(getProfileInformation(true));
+        if (totpToggle === true) {
+            getEnabledAuthenticators().then((response) => {
+                
+                const authenticators = response
+                
+                let authenticatorList;
+                if (authenticators !== undefined) {
+                    authenticatorList = authenticators.split(",");
+                } else {
+                    authenticatorList = []
+                }
+                
+                if (authenticatorList.includes("TOTP")) {
+                    // authenticatorList.remove("TOTP Authenticator")
+                    authenticatorList.splice(authenticatorList.indexOf("TOTP"), 1)
+                    
+                }
+                
+                const newEnabledAuthenticators = authenticatorList.join(",");
+                updateEnabledAuthenticators(newEnabledAuthenticators).then((response)=> {
+                    console.log("updated successfully authenticatores", response)
+                    setTotpToggle(false)
+                    if (isBackupCodeForced) {
+                        onBackupCodeAvailabilityToggle(false)
+                    }
+                }).catch((error)=> {
+                    console.log("failed update authenticators", error)
+                });
+                
+            }).catch((errorMessage) => {
+                console.log("my error", errorMessage)
+            })
+            
+        } else {
+            getEnabledAuthenticators().then((response) => {
+                console.log("my response2", response)
+                const authenticators = response
+                console.log("my authenticators2", authenticators)
+                let authenticatorList;
+                if (authenticators !== undefined) {
+                    authenticatorList = authenticators.split(",");
+                } else {
+                    authenticatorList = []
+                }
+                console.log("my list2", authenticatorList)
+                if (!authenticatorList.includes("TOTP")) {
+                    authenticatorList.push("TOTP")
+                }
+                // Enable backup authenticator for Asgardeo users.
+                if (isBackupCodeForced) {
+                    if (!authenticatorList.includes("Backup OTP Authenticator")) {
+                        authenticatorList.push("Backup OTP Authenticator")
+                    }
+                }
+                const newEnabledAuthenticators = authenticatorList.join(",");
+                updateEnabledAuthenticators(newEnabledAuthenticators).then((response)=> {
+                    console.log("updated successfully authenticatores2", response)
+                    setTotpToggle(true)
+                    if (isBackupCodeForced) {
+                        onBackupCodeAvailabilityToggle(true)
+                    }
+                }).catch((error)=> {
+                    console.log("failed update authenticators2", error)
+                });    
+            }).catch((errorMessage) => {
+                console.log("my error", errorMessage)
+            })
+        }
+
+    }
+
+
+    const initBackupFlow = () => {
+        // setIsbackupCodeConfigured(true)
+        setShowBackupCodeWizard(true);
+        setOpenWizard(true)
+        
+    }
+
     /**
      *  Initiate deletion of TOTP configuration.
      */
     const initDeleteTOTP = (): void => {
         deleteTOTP().then((response) => {
             setIsTOTPConfigured(false);
+            disableTOTPAuthentication()
             return;
         }).catch((errorMessage) => {
             onAlertFired({
@@ -173,6 +408,7 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
             });
         }).finally(() => {
             setRevokeTOTPAuthnModalVisibility(false);
+            
         });
     };
 
@@ -459,8 +695,14 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
                                             <Grid.Row columns={ 1 }>
                                                 <Grid.Column mobile={ 16 } tablet={ 16 } computer={ 16 }>
                                                     < Button onClick={ () => {
+                                                        console.log("call cancel")
                                                         setOpenWizard(false);
                                                         setIsTOTPConfigured(true);
+                                                        if (isBackupCodeForced && isInitFlow && isSuperTenantLogin) {
+                                                            setIsInitFlow(false)
+                                                            initBackupFlow()
+                                                        }
+                                                        
                                                     } }
                                                     className="link-button totp-verify-action-button"
                                                     data-testid={ `${ testId }-modal-actions-cancel-button` }>
@@ -477,6 +719,7 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
         );
     };
 
+    
     /**
      * This renders the success message at the end of the TOTP flow
      */
@@ -520,6 +763,15 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
                 return renderQRCode(stepToDisplay);
             case 1:
                 return renderSuccess();
+            case 2: 
+                return (<RenderBackupCodeWizard 
+                    onAlertFired={onAlertFired} 
+                    isForced={true} isInit={true} 
+                    openWizard={openWizard} 
+                    onOpenWizardToggle={ (isOpen : boolean) => {setOpenWizard(isOpen) }} 
+                    onShowBackupCodeWizardToggle={ (show : boolean) => {setShowBackupCodeWizard(show) }}
+                    showBackupWizard={showBackupCodeWizard}
+                    />)
         }
     };
 
@@ -541,6 +793,7 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
      */
      const handleRevokeTOTPAuthnClick = (): void => {
         setRevokeTOTPAuthnModalVisibility(true);
+        // disableBackupCodeAuthentication()
     };
     
     /**
@@ -581,6 +834,17 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
         </Modal>
     );
 
+    const backupWizard = (): JSX.Element => {
+        
+        return (<RenderBackupCodeWizard 
+            onAlertFired={onAlertFired} 
+            isForced={true} isInit={true} 
+            openWizard={openWizard} 
+            onOpenWizardToggle={ (isOpen : boolean) => {setOpenWizard(isOpen) }} 
+            onShowBackupCodeWizardToggle={ (show : boolean) => {setShowBackupCodeWizard(show) }}
+            showBackupWizard={showBackupCodeWizard}
+            />)
+    }
     /**
      * This renders the TOTP wizard
      */
@@ -591,7 +855,7 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
                 dimmer="blurring"
                 size="tiny"
                 open={ openWizard }
-                onClose={ () => { setOpenWizard(false); } }
+                onClose={ () => { setOpenWizard(false); setIsTOTPConfigured(true) } }
                 className="totp"
             >
                 {
@@ -627,6 +891,16 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
                                 
                             </Message.Content>
                         </Message>  
+                            ) : 
+                            step === 2 ? (
+                                 <Message className="backup-code-tooltip display-flex">
+                                <Icon name="info circle" />
+                                <Message.Content>
+                                    <Trans>
+                                        Download your backup codes
+                                    </Trans>
+                                </Message.Content>
+                            </Message>
                             ) : (  
                             <Button
                                 primary
@@ -635,6 +909,10 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
                                 onClick= { () => {
                                     setOpenWizard(false);
                                     setIsTOTPConfigured(true);
+                                    if (isBackupCodeForced && isInitFlow && isSuperTenantLogin) {
+                                        setIsInitFlow(false)
+                                        initBackupFlow()
+                                    }
                                 } }
                             >
                                 { stepButtonText(step) }
@@ -650,6 +928,7 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
                 ?
                 <>
                     { totpWizard() }
+                    { showBackupCodeWizard ? () =>{backupWizard(); setShowBackupCodeWizard(false)} : null}
                     <Grid padded={ true } data-testid={ testId }>
                         <Grid.Row columns={ 2 }>
                             <Grid.Column width={ 1 } className="first-column">
@@ -682,7 +961,7 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
                                             (
                                                 <Icon
                                                     link={ true }
-                                                    onClick={ initTOTPFlow }
+                                                    onClick={()=>{initTOTPFlow(); setIsInitFlow(true)}}
                                                     className="list-icon padded-icon"
                                                     size="small"
                                                     color="grey"
@@ -703,8 +982,9 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
                 <>
                 { revokeTOTPAuthnModal }
                 { totpWizard() }
+                { showBackupCodeWizard ? backupWizard() : null}
                     <Grid padded={ true } data-testid={ testId }>
-                        <Grid.Row columns={ 2 }>
+                        <Grid.Row columns={ 3 }>
                             <Grid.Column width={ 1 } className="first-column">
                                 <List.Content floated="left">
                                     <GenericIcon
@@ -728,8 +1008,30 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
                                     </List.Description>
                                 </List.Content>
                             </Grid.Column>
-                            <Grid.Column width={ 3 } className="last-column">
+                            { isSuperTenantLogin && enableMFAUserWise ? (
+                                <Grid.Column width={ 1 }>
+                                    <List.Content >
+                                        <Popup 
+                                            trigger={
+                                                (
+                                                    <Checkbox
+                                                        toggle
+                                                        data-tourid="conditional-auth"
+                                                        onChange={ toggleTOTP }
+                                                        checked={ totpToggle }
+                                                        className="conditional-auth-accordion-toggle"
+                                                    />
+                                                )
+                                            }
+                                            inverted
+                                            content={ t(translateKey + "enableHint")}
+                                        />
+                                    </List.Content>
+                                </Grid.Column>
+                            ): null}                       
+                            <Grid.Column width={ isSuperTenantLogin && enableMFAUserWise ? 2 : 3 } className="last-column" floated="right">
                                 <List.Content floated="right">
+                                    
                                     <Popup
                                         trigger={
                                             (
@@ -766,8 +1068,13 @@ export const TOTPAuthenticator: React.FunctionComponent<TOTPProps> = (
                                         inverted
                                     />
                                 </List.Content>
+                               
                             </Grid.Column>
+                            
+                            
                         </Grid.Row>
+                        
+                
                     </Grid>
                 </>
         )

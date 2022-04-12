@@ -28,6 +28,9 @@ import {
     ReactComponent as AuthenticatorAppIcon
 } from "../themes/default/assets/images/icons/authenticator-app-icon.svg";
 import {
+    ReactComponent as BackupCodeIcon
+} from "../themes/default/assets/images/icons/backup.svg";
+import {
     ReactComponent as BlockedMagnifierIcon
 } from "../themes/default/assets/images/icons/blocked-magnifier-icon.svg";
 import { ReactComponent as BoxIcon } from "../themes/default/assets/images/icons/box-icon.svg";
@@ -79,8 +82,13 @@ import {
     ReactComponent as SecurityQuestions
 } from "../themes/default/assets/images/illustrations/security-questions.svg";
 import {
+    ReactComponent as EmptyListResultsIllustration
+} from "../themes/default/assets/images/placeholder-illustrations/empty-list-illustration.svg";
+
+import {
     ReactComponent as EmptySearchResultsIllustration
 } from "../themes/default/assets/images/placeholder-illustrations/empty-search-illustration.svg";
+
 import DummyUser from "../themes/default/assets/images/user.png";
  
 export const UserImage: string = DummyUser;
@@ -140,13 +148,15 @@ export const getMFAIcons = (): {
     fingerprint: React.FunctionComponent<React.SVGProps<SVGSVGElement>>;
     sms: React.FunctionComponent<React.SVGProps<SVGSVGElement>>;
     keyboard: React.FunctionComponent<React.SVGProps<SVGSVGElement>>;
+    backupCode: React.FunctionComponent<React.SVGProps<SVGSVGElement>>;
  } => {
  
     return {
         authenticatorApp: AuthenticatorAppIcon,
+        backupCode: BackupCodeIcon,
         fingerprint: FingerprintIcon,
-        sms: SMSIcon,
-        keyboard: KeyboardIcon
+        keyboard: KeyboardIcon,
+        sms: SMSIcon
     };
 };
  
@@ -203,6 +213,7 @@ export const getEmptyPlaceholderIllustrations = (): {
     loginError: React.FunctionComponent<React.SVGProps<SVGSVGElement>>;
     pageNotFound: React.FunctionComponent<React.SVGProps<SVGSVGElement>>;
     search: React.FunctionComponent<React.SVGProps<SVGSVGElement>>;
+    newList: React.FunctionComponent<React.SVGProps<SVGElement>>;
  } => {
  
     return {
@@ -211,6 +222,7 @@ export const getEmptyPlaceholderIllustrations = (): {
         genericError: CloseIcon,
         loginError: ForbiddenIcon,
         pageNotFound: BlockedMagnifierIcon,
+        newList: EmptyListResultsIllustration,
         search: EmptySearchResultsIllustration
     };
 };

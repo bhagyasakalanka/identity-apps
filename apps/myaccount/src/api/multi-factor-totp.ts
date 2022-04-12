@@ -203,34 +203,3 @@ export const getTOTPSecret = (): Promise<any> => {
             return Promise.reject(error);
         });
 };
-
-/**
- * This API is used to check if the TOTP secret key is added for the user
- */
-export const checkIfTOTPEnabled = (): Promise<any> => {
-    const requestConfig = {
-        headers: {
-            "Access-Control-Allow-Origin": store.getState().config.deployment.clientHost,
-            "Content-Type": "application/json"
-        },
-        method: HttpMethods.GET,
-        url: store.getState().config.endpoints.me
-    };
-
-    return httpClient(requestConfig)
-        .then((response) => {
-            if (response.status !== 200) {
-                return Promise.reject(`An error occurred. The server returned ${response.status}`);
-            }
-            const totpEnabled = response?.["data"]?.[SCIMConfigs.scim.customEnterpriseSchema]?.["totpEnabled"];
-
-            if (totpEnabled && totpEnabled == "true") {
-                return true;
-            } else {
-                return false;
-            }
-        })
-        .catch((error) => {
-            return Promise.reject(error);
-        });
-};

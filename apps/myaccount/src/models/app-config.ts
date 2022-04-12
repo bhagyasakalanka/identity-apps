@@ -85,6 +85,8 @@ export interface ServiceResourceEndpointsInterface {
     token: string;
     totp: string;
     totpSecret: string;
+    backupCode: string;
+    backupCodeDisable: string;
     typingDNAMe: string;
     typingDNAServer: string;
     user: string;
@@ -146,6 +148,10 @@ export interface UIConfigInterface extends CommonUIConfigInterface {
      * TOTP authenticator apps.
      */
     authenticatorApp?: AuthenticatorAppInterface[];
+    /**
+     * Backup Code authenticator apps.
+     */
+     backupCodeApp?: AuthenticatorAppInterface[];
     /**
      * Config for Remove MFA for Super Tenant User.
      */
