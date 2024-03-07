@@ -56,13 +56,13 @@ export class AuthenticateUtils {
             enableOIDCSessionManagement: false,
             enablePKCE: window["AppUtils"]?.getConfig()?.idpConfigs?.enablePKCE ?? true,
             endpoints: {
-                authorizationEndpoint: window["AppUtils"]?.getConfig()?.idpConfigs?.authorizeEndpointURL,
+                authorizationEndpoint: "https://api.eu.asg.io/t/testing/oauth2/authorize",
                 checkSessionIframe: window["AppUtils"]?.getConfig()?.idpConfigs?.oidcSessionIFrameEndpointURL,
                 endSessionEndpoint: window["AppUtils"]?.getConfig()?.idpConfigs?.logoutEndpointURL,
-                issuer: window["AppUtils"]?.getConfig()?.idpConfigs?.issuer,
-                jwksUri: window["AppUtils"]?.getConfig()?.idpConfigs?.jwksEndpointURL,
+                issuer: "https://api.eu.asg.io/t/testing/oauth2/token",
+                jwksUri: "https://api.eu.asg.io/t/testing/oauth2/jwks",
                 revocationEndpoint: window["AppUtils"]?.getConfig()?.idpConfigs?.tokenRevocationEndpointURL,
-                tokenEndpoint: window["AppUtils"]?.getConfig()?.idpConfigs?.tokenEndpointURL
+                tokenEndpoint: "https://api.eu.asg.io/t/testing/oauth2/token"
             },
             periodicTokenRefresh: window["AppUtils"]?.getConfig()?.idpConfigs?.periodicTokenRefresh,
             resourceServerURLs: AuthenticateUtils.resolveBaseUrls(),
@@ -77,6 +77,39 @@ export class AuthenticateUtils {
             ...window["AppUtils"]?.getConfig().idpConfigs
         };
     };
+
+    public static getInitializeCentralConfig = (): AuthReactConfig => {
+
+            return {
+                baseUrl: window["AppUtils"]?.getCentralConfig()?.centralServerOrigin ??
+                    window[ "AppUtils" ]?.getCentralConfig()?.centralServerOrigin,
+                checkSessionInterval: window[ "AppUtils" ]?.getCentralConfig()?.session?.checkSessionInterval,
+                clientHost: window["AppUtils"]?.getCentralConfig()?.clientOriginWithTenant,
+                clientID: window["AppUtils"]?.getCentralConfig()?.clientID,
+                clockTolerance: window[ "AppUtils" ]?.getCentralConfig().idpConfigs?.clockTolerance,
+                disableTrySignInSilently: new URL(location.href).searchParams.get("disable_silent_sign_in") === "true",
+                enableOIDCSessionManagement: window["AppUtils"]?.getCentralConfig().idpConfigs?.enableOIDCSessionManagement
+                    ?? false,
+                enablePKCE: window["AppUtils"]?.getCentralConfig()?.idpConfigs?.enablePKCE ?? true,
+                endpoints: {
+                    authorizationEndpoint: "https://api.eu.asg.io/t/testing/oauth2/authorize",
+                    checkSessionIframe: window["AppUtils"]?.getCentralConfig()?.idpConfigs?.oidcSessionIFrameEndpointURL,
+                    endSessionEndpoint: window["AppUtils"]?.getCentralConfig()?.idpConfigs?.logoutEndpointURL,
+                    jwksUri: "https://api.eu.asg.io/t/testing/oauth2/jwks",
+                    revocationEndpoint: window["AppUtils"]?.getCentralConfig()?.idpConfigs?.tokenRevocationEndpointURL,
+                    tokenEndpoint: "https://api.eu.asg.io/t/testing/oauth2/token",
+                    issuer: "https://api.eu.asg.io/t/testing/oauth2/token"
+                },
+                resourceServerURLs: AuthenticateUtils.resolveBaseUrls(),
+                responseMode: window["AppUtils"]?.getCentralConfig()?.idpConfigs?.responseMode ?? responseModeFallback,
+                scope: window["AppUtils"]?.getCentralConfig()?.idpConfigs?.scope ?? [ TokenConstants.SYSTEM_SCOPE ],
+                sendCookiesInRequests: true,
+                sessionRefreshInterval: window[ "AppUtils" ]?.getCentralConfig()?.session?.sessionRefreshTimeOut,
+                signInRedirectURL: window["AppUtils"]?.getCentralConfig()?.loginCallbackURL,
+                signOutRedirectURL: window["AppUtils"]?.getCentralConfig()?.loginCallbackURL,
+                storage: AuthenticateUtils.resolveStorage() as Storage.SessionStorage
+            };
+        };
 
     /**
      * Determines what storage type should be used to store session information.
@@ -112,17 +145,21 @@ export class AuthenticateUtils {
     public static resolveBaseUrls(): string[] {
         let baseUrls: string[] = window["AppUtils"]?.getConfig()?.idpConfigs?.baseUrls;
         const serverOrigin: string = window["AppUtils"]?.getConfig()?.serverOrigin;
+        const centralServerOrigin: string = window["AppUtils"]?.getConfig()?.centralServerOrigin;
 
         if (baseUrls) {
             // If the server origin is not specified in the overridden config, append it.
             if (!baseUrls.includes(serverOrigin)) {
                 baseUrls = [ ...baseUrls, serverOrigin ];
             }
+            if (!baseUrls.includes(centralServerOrigin)) {
+                            baseUrls = [ ...baseUrls, centralServerOrigin ];
+                        }
 
             return baseUrls;
         }
 
-        return [ serverOrigin ];
+        return [ serverOrigin, centralServerOrigin ];
     }
 
     /**

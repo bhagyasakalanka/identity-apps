@@ -46,11 +46,13 @@
             "profile"
         ],
         "serverOrigin": "https://localhost:9443",
-        "responseMode": "query"
+        "responseMode": "query",
+        "tokenEndpointURL": "${serverOrigin}/${tenantPrefix}/${userTenantDomain}/oauth2/token"
     },
     "i18nResourcePath": "",
     "loginCallbackPath": "",
     "logoutCallbackPath": "",
+    "centralLogoutServerOrigin": "https://console.asg.io/t/a/oidc/logout",
     "serverOrigin": "https://localhost:9443",
     "routePaths": {
         "home": "/getting-started",
