@@ -17,11 +17,17 @@
  */
 
 import { AsgardeoSPAClient, HttpClientInstance } from "@asgardeo/auth-react";
+import useRequest, {
+    RequestConfigInterface,
+    RequestErrorInterface,
+    RequestResultInterface,
+    SWRConfig
+} from "@wso2is/admin.core.v1/hooks/use-request";
 import { store } from "@wso2is/admin.core.v1/store";
 import { OrganizationType } from "@wso2is/admin.organizations.v1/constants";
 import { HttpMethods } from "@wso2is/core/models";
 import { AxiosError, AxiosRequestConfig, AxiosResponse } from "axios";
-import { TenantRequestResponse } from "../models";
+import { DeploymentUnit, DeploymentUnitResponse, TenantRequestResponse } from "../models";
 
 const getDomainQueryParam = (): string => {
     const tenantDomain: string = store.getState().auth.tenantDomain;
@@ -47,9 +53,10 @@ const httpClient: HttpClientInstance = AsgardeoSPAClient.getInstance()
  *
  * @param tenantName - new tenant name
  */
-export const addNewTenant = (tenantName: string): Promise<AxiosResponse> => {
+export const addNewTenant = (tenantName: string, deploymentUnit?: DeploymentUnit): Promise<AxiosResponse> => {
     const requestConfig: AxiosRequestConfig = {
         data: {
+            deploymentUnit: deploymentUnit?.name,
             domain: tenantName
         },
         headers: {
@@ -160,3 +167,29 @@ export const getAssociatedTenants = (
             return Promise.reject(error?.response?.data);
         });
 };
+
+export const useDeploymentUnits =
+    <Data = DeploymentUnitResponse, Error = RequestErrorInterface>
+    (
+        requestOptions: SWRConfig<Data, Error>,
+        shouldFetch: boolean = false
+    ) : RequestResultInterface<Data, Error> => {
+        const requestConfig: RequestConfigInterface = {
+            headers: {
+                "Content-Type": "application/json"
+            },
+            method: HttpMethods.GET,
+            url: store.getState().config.endpoints.deploymentUnits + getDomainQueryParam()
+        };
+
+        const { data, error, isValidating, mutate } = useRequest<Data, Error>(
+            shouldFetch ? requestConfig : null, requestOptions);
+
+        return {
+            data,
+            error: error,
+            isLoading: !error && !data,
+            isValidating,
+            mutate: mutate
+        };
+    };

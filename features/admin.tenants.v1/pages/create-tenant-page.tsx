@@ -21,7 +21,7 @@ import { AppState } from "@wso2is/admin.core.v1/store";
 import { EventPublisher } from "@wso2is/admin.core.v1/utils/event-publisher";
 import { AlertInterface, AlertLevels, TestableComponentInterface } from "@wso2is/core/models";
 import { addAlert } from "@wso2is/core/store";
-import { Field, Form } from "@wso2is/form";
+import { DropdownChild, Field, Form } from "@wso2is/form";
 import {
     ContentLoader,
     GenericIcon,
@@ -50,9 +50,10 @@ import { useTranslation } from "react-i18next";
 import { useDispatch, useSelector } from "react-redux";
 import { Dispatch } from "redux";
 import { Card, Divider, Flag, FlagNameValues, Grid, Icon } from "semantic-ui-react";
-import { addNewTenant, checkDuplicateTenants } from "../api";
+import { addNewTenant, checkDuplicateTenants, useDeploymentUnits } from "../api";
 import { TenantCreationIcons } from "../configs";
 import { TenantManagementConstants } from "../constants";
+import { DeploymentUnit } from "../models";
 import { Region } from "../models/region";
 import { handleTenantSwitch } from "../utils";
 
@@ -68,6 +69,7 @@ export interface AddTenantFormErrorValidationsInterface {
  */
 export interface AddTenantFormValuesInterface {
     tenantName: string;
+    deploymentUnitName?: string;
 }
 
 const FORM_ID: string = "create-tenant-form";
@@ -99,6 +101,8 @@ const TenantCreationPage: FunctionComponent<TestableComponentInterface> = (
     const [ tenantLoaderText, setTenantLoaderText ] = useState<string>();
     const [ newTenantName, setNewTenantName ] = useState<string>(TenantManagementConstants.TENANT_URI_PLACEHOLDER);
     const [ submissionValue, setSubmissionValue ] = useState<AddTenantFormValuesInterface>();
+    const [ deploymentUnits, setDeploymentUnits ] = useState<DeploymentUnit[]>([]);
+    const [ selectedDeploymentUnit, setSelectedDeploymentUnit ] = useState<DeploymentUnit>(undefined);
 
     const deploymentRegion: Region = useSelector((state: AppState) => {
         return state.config?.deployment?.extensions?.deploymentRegion as Region;
@@ -110,6 +114,10 @@ const TenantCreationPage: FunctionComponent<TestableComponentInterface> = (
 
     const tenantPrefix: string = useSelector((state: AppState) => {
         return state.config?.deployment?.tenantPrefix as string;
+    });
+
+    const isCentralDeploymentEnabled: boolean = useSelector((state: AppState) => {
+        return state?.config?.deployment?.centralDeploymentEnabled;
     });
 
     const alternativeRegion: Region = useMemo(() => {
@@ -169,6 +177,49 @@ const TenantCreationPage: FunctionComponent<TestableComponentInterface> = (
 
     const eventPublisher: EventPublisher = EventPublisher.getInstance();
 
+    const {
+        data: deploymentUnitResponse,
+        isLoading: isDeploymentUnitsLoading,
+        error: deploymentUnitFetchRequestError
+    } = useDeploymentUnits(
+        {
+            revalidateIfStale: true
+        },
+        isCentralDeploymentEnabled
+    );
+
+    useEffect(() => {
+        setDeploymentUnits(deploymentUnitResponse?.deploymentUnits);
+    }, [ isDeploymentUnitsLoading ]);
+
+    /**
+     * Dispatches error notifications if deployment unit fetch request fails.
+     */
+    useEffect(() => {
+        if (!deploymentUnitFetchRequestError) {
+            return;
+        }
+
+        if (deploymentUnitFetchRequestError?.response?.data?.description) {
+            dispatch(addAlert({
+                description: deploymentUnitFetchRequestError?.response?.data?.description
+                    ?? deploymentUnitFetchRequestError?.response?.data?.detail
+                        ?? t("tenants:listDeploymentUnits.description"),
+                level: AlertLevels.ERROR,
+                message: deploymentUnitFetchRequestError?.response?.data?.message
+                    ?? t("tenants:listDeploymentUnits.message")
+            }));
+
+            return;
+        }
+
+        dispatch(addAlert({
+            description: t("tenants:listDeploymentUnits.description"),
+            level: AlertLevels.ERROR,
+            message: t("tenants:listDeploymentUnits.message")
+        }));
+    }, [ deploymentUnitFetchRequestError ]);
+
     useEffect(() => {
         if (submissionValue && finishSubmit && isTenantValid && !tenantDuplicate) {
             setFinishSubmit(false);
@@ -191,6 +242,16 @@ const TenantCreationPage: FunctionComponent<TestableComponentInterface> = (
     };
 
     /**
+     * Function to update the deployment unit.
+     *
+     * @param deploymentUnitName - Deployment unit name.
+     */
+    const updateDeploymentUnit = (deploymentUnitName: string): void => {
+        setSelectedDeploymentUnit(deploymentUnits.find((deploymentUnit: DeploymentUnit) =>
+            deploymentUnit.name == deploymentUnitName));
+    };
+
+    /**
      * Function to check the validity of the tenant name entered by the user.
      */
     const checkTenantValidity = (tenantName: string): boolean => {
@@ -203,6 +264,15 @@ const TenantCreationPage: FunctionComponent<TestableComponentInterface> = (
         }
 
         return isValidTenantName;
+    };
+
+
+    const redirectingConsoleUrl = (): string => {
+        return `${ isCentralDeploymentEnabled && selectedDeploymentUnit ?
+            deploymentUnits.find((deploymentUnit: DeploymentUnit) =>
+                deploymentUnit.name == selectedDeploymentUnit.name).consoleHostname :
+            regionQualifiedConsoleUrl ??
+                "https://console.asgardeo.io"}/${tenantPrefix ?? "t"}/`;
     };
 
     /**
@@ -250,7 +320,11 @@ const TenantCreationPage: FunctionComponent<TestableComponentInterface> = (
             .catch((error: AxiosError) => {
                 if (error.response.status == 404) {
                     // Proceed to tenant creation if tenant does not exist.
-                    addTenant(submissionValue.tenantName);
+                    addTenant(
+                        submissionValue.tenantName,
+                        isCentralDeploymentEnabled ? deploymentUnits?.find((deploymentUnit: DeploymentUnit) =>
+                            deploymentUnit.name == submissionValue.deploymentUnitName) : undefined
+                    );
                 } else {
                     setIsNewTenantLoading(false);
                     setAlert({
@@ -266,10 +340,10 @@ const TenantCreationPage: FunctionComponent<TestableComponentInterface> = (
     /**
      * Function which contains the logic to add a new tenant by calling APIs.
      */
-    const addTenant = (tenantName: string): void => {
+    const addTenant = (tenantName: string, deploymentUnit?: DeploymentUnit): void => {
         setIsNewTenantLoading(true);
         setTenantLoaderText(t("extensions:manage.features.tenant.wizards.addTenant.forms.loaderMessages.tenantCreate"));
-        addNewTenant(tenantName)
+        addNewTenant(tenantName, deploymentUnit)
             .then((response: AxiosResponse) => {
                 if (response.status === 201) {
                     eventPublisher.publish("create-new-organization");
@@ -288,7 +362,10 @@ const TenantCreationPage: FunctionComponent<TestableComponentInterface> = (
                     delay(() => {
                         setIsNewTenantLoading(false);
                         // onCloseHandler();
-                        handleTenantSwitch(tenantName);
+                        handleTenantSwitch(
+                            tenantName,
+                            isCentralDeploymentEnabled ? deploymentUnit.consoleHostname : undefined
+                        );
                     }, 5000);
                 }
             })
@@ -421,6 +498,15 @@ const TenantCreationPage: FunctionComponent<TestableComponentInterface> = (
         }
     };
 
+    const deploymentUnitOptions: DropdownChild[] = useMemo(() => {
+
+        return deploymentUnits?.map((deploymentUnit: DeploymentUnit) => ({
+            key: deploymentUnit.name,
+            text: deploymentUnit.displayName,
+            value: deploymentUnit.name
+        }));
+    }, [ deploymentUnits ]);
+
     return (
         <PageLayout
             padded={ false }
@@ -546,18 +632,30 @@ const TenantCreationPage: FunctionComponent<TestableComponentInterface> = (
                                     onFocus={ () => setIsFocused(true) }
                                     data-testid={ `${ testId }-type-input` }
                                 />
+                                { isCentralDeploymentEnabled  ? (
+                                    <Field.Dropdown
+                                        ariaLabel="Region"
+                                        name="deploymentUnitName"
+                                        label={ t("tenants:deploymentUnits.label") }
+                                        placeholder = { t("tenants:deploymentUnits.placeholder") }
+                                        required={ true }
+                                        options={ deploymentUnitOptions }
+                                        readOnly={ true }
+                                        data-testid={ `${ testId }-deployment-unit-dropdown` }
+                                        listen={ updateDeploymentUnit }
+                                        enableReinitialize={ true }
+                                    />
+                                ) : null }
                             </Form>
                             { isCheckingTenantExistence
                                 ? (
                                     <Text className="tenant-uri-prefix">
-                                        { `${regionQualifiedConsoleUrl ??
-                                            "https://console.asgardeo.io"}/${tenantPrefix ?? "t"}/` }
+                                        { redirectingConsoleUrl() }
                                         <Icon name="circle notched" color="grey" loading/>
                                     </Text>
                                 ) : (
                                     <span>
-                                        { `${regionQualifiedConsoleUrl ??
-                                            "https://console.asgardeo.io"}/${tenantPrefix ?? "t"}/` }
+                                        { redirectingConsoleUrl() }
                                         <span
                                             className={ `${
                                                 newTenantName !== TenantManagementConstants.TENANT_URI_PLACEHOLDER
